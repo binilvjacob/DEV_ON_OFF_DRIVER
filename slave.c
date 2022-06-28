@@ -1,20 +1,14 @@
 
-								// MOSFET DIMMABLE DRIVER VERSION 1 BETA v1.00 //
+								// DEVICE ON-OFF DRIVER VERSION 1 BETA v1.00 //
 /* 
 	   Details : 
 
-	-> Faderate concept removed to execute over current shutdown
-	-> PWM auto shutdown enabled
-	-> PWM auto restart disabled
-	-> PWM restart delay increments sequentially
 	-> Hardware relay connected to PIN_C2
-	-> Comparator 2 with inverted output is used
-	-> CCP1 module is used in PWM mode
-	-> Device type ID : 7
+	-> Device type ID : 8
 	-> DALI Tx pin : PIN_A0
 	-> DALI Rx pin : PIN_A2
 	-> Version : BETA
-	-> Last modified date : 30/04/2022    
+	-> Last modified date : 28/06/2022    
 	-> Github repo URL :  .
 
 */
@@ -26,7 +20,7 @@
 
 #use delay(clock=4000000)
 
-#define device_type 7  				// setting device type 7 - MOSFET dimamble driver
+#define device_type 8  				// setting device type 8 - DEVICE ON-OFF DRIVER
 
 #define Fixlampid   10 				// LAMP ADDRESS //
 #define zoneid_init   212 			// zone address // 
@@ -106,9 +100,6 @@ char lampid  = Fixlampid;
 
 int1 reset_flag=0;			// For WDT reset operation inside RTCC interrupt
 
-int32 restart_count=0;
-int32 restart_delay=0;
-char failure_count=0;
 
 void readData(void);
 void init(void);
@@ -227,10 +218,6 @@ RTCC_isr()
           settling_time++;
       }              
    }
-	if(ECCPASE==1 && restart_delay>2) // event just occurred and is not ready for reset
-		{
-			restart_delay--;
-		}
 }
 
 
@@ -256,29 +243,8 @@ void main(void)
 		SetDimmLevel(duty);		
 		lamp_on();		
 	}
-	restart_delay=3000;				// initial restart delay
-	restart_count=0;				// initial restart counts
-	ECCPASE=0;						// Restart operation
 
 start:
-
-	if(restart_delay<=2 && ECCPASE==1)			// restart after variable delay
-	{
-		ECCPASE=0;								// PWM restart operation
-		restart_count++;						// Increment restart event counter
-		restart_delay=restart_delay+restart_count*5000;		// Increasing the restart delay
-		if(restart_delay>30000)					// Permanent shutdown after many restart attempts
-		{
-			output_low(pin_c2);
-			failure_count++;					// Failed to turn ON
-			if(failure_count>254)
-			{
-				failure_count=254;
-			}
-			write_eeprom(SystemFailureRateStore,failure_count);
-			delay_us(10);			
-		}		
-	}
 	
 	if(reset_flag==1)
 	{
@@ -326,13 +292,6 @@ start:
 void init(void)
 
 {
-	setup_timer_2(T2_DIV_BY_1,249,1);		//250 us overflow, 250 us interrupt  // 4000Hz
-	setup_ccp1(CCP_PWM|CCP_SHUTDOWN_ON_COMP2|CCP_SHUTDOWN_AC_L|CCP_SHUTDOWN_BD_L);	// Setting up PWM
-	setup_comparator(A0_VR_C0_VR);				// Setting up comparator
-	setup_vref(VREF_LOW|1);						// Setting up reference voltage
-	PRSEN=0;									// Auto-restart disabled
-	CCMCON0=1;									// Comparator output inverted
-
 	setup_timer_0(RTCC_INTERNAL|RTCC_DIV_1);
 	setup_timer_1(T1_internal|T1_div_by_1);
 	timerOnOff=0;
@@ -688,8 +647,6 @@ void commands(void)
 		}
 		case 208:	// on
 		{  
-			restart_delay=3000;
-			restart_count=0;
 			output_high(pin_c2);			
 			duty = MaximumLevel;
 			lamp_on();								
@@ -881,8 +838,10 @@ void commands(void)
 		}
 		case 48:		// PWM Restart operation		// USE WITH CARE		
 		{
+			/*
 			ECCPASE=0;		
 			break;
+			*/
 		}
 		case 52:	// Read the no. of times system was shutdown permanently
 		{
@@ -966,8 +925,6 @@ delay_us(10);
 lampid 				= read_EEPROM ( ShortAddressStore );
 delay_us(10);
 zoneid=read_EEPROM(zoneidstore);
-delay_us(10);
-failure_count=read_EEPROM(SystemFailureRateStore);
 delay_us(10);
 }
 
